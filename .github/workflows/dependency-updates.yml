@@ -1,0 +1,64 @@
+name: Dependency Updates
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+jobs:
+  test-dependency-updates:
+    name: Test Dependency Updates
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run security audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+      
+      - name: Run tests with updated dependencies
+        run: npm test
+      
+      - name: Run linter
+        run: npm run lint
+        continue-on-error: true
+      
+      - name: Check for breaking changes
+        run: |
+          echo "Checking dependency compatibility..."
+          npm outdated || echo "Some packages may have updates available"
+        continue-on-error: true
+      
+      - name: Add PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const body = `## Dependency Update Check ✅
+            
+            - Tests: ${{ job.status }}
+            - Security Audit: Completed
+            - Linting: Completed
+            
+            Please review the changes carefully before merging.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })

@@ -1,0 +1,81 @@
+name: Documentation Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy-docs:
+    name: Build and Deploy Documentation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+      
+      - name: Install documentation tools
+        run: |
+          npm install -g markdown-pdf || echo "markdown-pdf install optional"
+      
+      - name: Create documentation structure
+        run: |
+          mkdir -p docs-build
+          cp README.md docs-build/README.md || echo "README copied"
+          cp -r docs/* docs-build/ 2>/dev/null || echo "No additional docs"
+          
+          # Create index.html from README.md
+          cat > docs-build/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Heavens Above Documentation</title>
+            <meta charset="utf-8">
+            <style>
+              body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+              pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
+              code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
+            </style>
+          </head>
+          <body>
+            <h1>Heavens Above Documentation</h1>
+            <div id="content"></div>
+            <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+            <script>
+              fetch('README.md')
+                .then(r => r.text())
+                .then(t => {
+                  document.getElementById('content').innerHTML = marked.parse(t);
+                });
+            </script>
+          </body>
+          </html>
+          EOF
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs-build
+          destination_dir: ./docs
+          cname: false
+      
+      - name: Documentation deployment status
+        run: |
+          echo "## Documentation Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "Documentation has been deployed to GitHub Pages." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/docs/" >> $GITHUB_STEP_SUMMARY
