@@ -1,94 +1,42 @@
-name: Generate Release Notes
+name: Release Notes
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for release'
         required: true
-        type: string
 
 jobs:
-  generate-release:
-    name: Generate Release Notes
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: Determine tag
+
+      - name: Get Tag
         id: tag
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Generate release notes
-        id: release_notes
+          echo "tag=${{ github.event.inputs.tag_name || github.ref_name }}" >> $GITHUB_OUTPUT
+
+      - name: Generate Notes
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
-          echo "## Release Notes for $TAG" > release-notes.md
-          echo "" >> release-notes.md
-          echo "**Release Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> release-notes.md
-          echo "" >> release-notes.md
-          echo "### Changes" >> release-notes.md
-          echo "" >> release-notes.md
-          
-          if [ -z "$PREV_TAG" ]; then
-            git log --pretty=format:"- %s (%h)" >> release-notes.md
-          else
-            git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" >> release-notes.md
-          fi
-          
-          echo "" >> release-notes.md
-          echo "### Technical Details" >> release-notes.md
-          echo "- **Repository:** ${{ github.repository }}" >> release-notes.md
-          echo "- **Commit:** ${{ github.sha }}" >> release-notes.md
-          echo "- **Author:** ${{ github.actor }}" >> release-notes.md
-      
-      - name: Read release notes
-        id: notes
-        run: |
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          cat release-notes.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-      
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+          PREV=$(git describe --tags --abbrev=0 @^ 2>/dev/null || echo "")
+          echo "## $TAG" > notes.md
+          git log ${PREV}..HEAD --pretty="- %s" >> notes.md
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: Release ${{ steps.tag.outputs.tag }}
-          body: ${{ steps.notes.outputs.notes }}
-          draft: false
-          prerelease: false
-      
-      - name: Upload release artifacts
-        run: |
-          mkdir -p release-artifacts
-          cp package.json release-artifacts/
-          cp package-lock.json release-artifacts/
-          cp README.md release-artifacts/
-          tar -czf release-artifacts/source-code.tar.gz --exclude='.git' --exclude='node_modules' .
-      
-      - name: Attach artifacts to release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: release-artifacts/*
-      
-      - name: Display release info
-        run: |
-          echo "## Release Created Successfully" >> $GITHUB_STEP_SUMMARY
-          echo "**Tag:** ${{ steps.tag.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Release URL:** https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          body_path: notes.md
+          files: |
+            package.json
+            README.md

@@ -5,97 +5,52 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  code-review:
-    name: Automated Code Review
+  review:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
+          node-version: '18'
           cache: 'npm'
-      
-      - name: Install dependencies
+
+      - name: Install
         run: npm ci
-      
-      - name: Run ESLint
-        id: eslint
+
+      - name: Lint
+        id: lint
         run: |
-          npm run lint > eslint-report.txt 2>&1 || true
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
-        continue-on-error: true
-      
-      - name: Upload ESLint report
-        uses: actions/upload-artifact@v3
-        if: always()
+          npm run lint > lint.txt 2>&1 || echo "code=$?" >> $GITHUB_OUTPUT
+
+      - name: Audit
+        run: npm audit --json > audit.json || true
+
+      - name: Upload Reports
+        uses: actions/upload-artifact@v4
         with:
-          name: eslint-report
-          path: eslint-report.txt
-      
-      - name: Security vulnerability scan
-        run: |
-          npm audit --json > audit-report.json || true
-          echo "Security audit completed"
-        continue-on-error: true
-      
-      - name: Check code complexity
-        run: |
-          echo "## Code Review Results" > review-report.md
-          echo "" >> review-report.md
-          echo "### ESLint Results" >> review-report.md
-          cat eslint-report.txt >> review-report.md || echo "No ESLint issues" >> review-report.md
-          echo "" >> review-report.md
-          echo "### Security Scan" >> review-report.md
-          npm audit --summary >> review-report.md || echo "No security issues found" >> review-report.md
-        continue-on-error: true
-      
-      - name: Upload review report
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: code-review-report
-          path: review-report.md
-      
-      - name: Post review comment
-        uses: actions/github-script@v6
+          name: review-reports
+          path: |
+            lint.txt
+            audit.json
+
+      - name: Comment
+        uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            let reviewBody = '## 🔍 Automated Code Review\n\n';
-            
-            // Read ESLint results
-            try {
-              const eslintReport = fs.readFileSync('eslint-report.txt', 'utf8');
-              if (eslintReport && eslintReport.length > 0) {
-                reviewBody += '### ESLint Analysis\n';
-                reviewBody += '```\n' + eslintReport + '\n```\n\n';
-              }
-            } catch (e) {
-              reviewBody += '### ESLint Analysis ✅\nNo issues found!\n\n';
-            }
-            
-            // Security check
-            reviewBody += '### Security Scan ✅\n';
-            reviewBody += 'Dependency security audit completed.\n\n';
-            
-            reviewBody += '---\n';
-            reviewBody += '*This is an automated review. Please address any issues before merging.*';
-            
+            const lint = require('fs').readFileSync('lint.txt', 'utf8');
+            const body = lint ? `### ESLint Issues\n\`\`\`\n${lint}\n\`\`\`` : 'No lint issues';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: reviewBody
+              body
             })
-      
-      - name: Set status check
-        if: steps.eslint.outputs.exit_code != '0'
-        run: |
-          echo "ESLint found issues. Please fix them."
-          exit 1
+
+      - name: Fail if lint errors
+        if: steps.lint.outputs.code != '0'
+        run: exit 1

@@ -1,67 +1,37 @@
-name: Scheduled Tasks
+name: Daily Data Update
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # Daily at 2:00 AM UTC
-  workflow_dispatch:  # Allows manual triggering
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 jobs:
-  maintenance:
-    name: Daily Maintenance Tasks
+  update:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
+          node-version: '18'
           cache: 'npm'
-      
-      - name: Install dependencies
+
+      - name: Install
         run: npm ci
-      
-      - name: Run data scraping
+
+      - name: Scrape
+        run: node run.js
+
+      - name: Commit Changes
         run: |
-          echo "Running scheduled data scraping..."
-          node run.js || echo "Scraping completed with warnings"
-        continue-on-error: true
-      
-      - name: Check for changes
-        id: check-changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add public/data/ || echo "No data changes"
-          git diff --staged --quiet || echo "changes=true" >> $GITHUB_OUTPUT
-      
-      - name: Commit and push changes
-        if: steps.check-changes.outputs.changes == 'true'
-        run: |
-          git commit -m "Automated data update: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || exit 0
-          git push || echo "Push skipped"
-        continue-on-error: true
-      
-      - name: Generate status report
-        run: |
-          echo "## Scheduled Task Status Report" >> $GITHUB_STEP_SUMMARY
-          echo "- **Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** Completed" >> $GITHUB_STEP_SUMMARY
-          echo "- **Changes:** ${{ steps.check-changes.outputs.changes }}" >> $GITHUB_STEP_SUMMARY
-      
-      - name: Create notification issue on failure
-        if: failure()
-        uses: actions/github-script@v6
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `Scheduled Task Failed - ${new Date().toISOString()}`,
-              body: 'The scheduled maintenance task failed. Please check the workflow logs.',
-              labels: ['automation', 'scheduled-task']
-            })
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add public/data/
+          git diff --quiet && git diff --staged --quiet || (
+            git commit -m "Update data: $(date -u '+%Y-%m-%d %H:%M UTC')" && 
+            git push
+          )
