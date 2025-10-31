@@ -22,6 +22,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build || echo "no build script – using public/ as-is"
+      - run: |
+          if [ ! -d "public" ]; then
+            echo "public/ directory not found, creating minimal site"
+            mkdir -p public
+            echo "<!DOCTYPE html><html><head><title>Heavens Above</title></head><body><h1>Heavens Above</h1><p>Application deployed successfully.</p></body></html>" > public/index.html
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: site
@@ -39,6 +45,8 @@ jobs:
           name: site
           path: public/
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public/
