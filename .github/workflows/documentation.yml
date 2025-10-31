@@ -9,12 +9,17 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,9 +32,16 @@ jobs:
           <!DOCTYPE html><html><head><title>Docs</title><meta charset="utf-8"><style>body{font-family:Arial;margin:40px auto;max-width:800px;line-height:1.6}</style></head><body><div id="content"></div><script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script><script>fetch('README.md').then(r=>r.text()).then(t=>document.getElementById('content').innerHTML=marked.parse(t))</script></body></html>
           EOF
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs-build
-          destination_dir: docs
+          enablement: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs-build
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
