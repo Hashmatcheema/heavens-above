@@ -1,3 +1,4 @@
+//
 const crypto = require('crypto');
 
 function getTimestamp(time) {
